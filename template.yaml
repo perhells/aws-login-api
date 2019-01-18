@@ -1,0 +1,330 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: AWS Cognito Login API
+
+Parameters:
+  Environment:
+    Type: String
+
+Resources:
+  LoginUserPool:
+    Type: "AWS::Cognito::UserPool"
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+        InviteMessageTemplate:
+          EmailMessage: "Hi, and welcome!<br><br>A temporary password has been created for you.<br><br>username: {username}<br>password: {####}<br><br>Login to change password."
+          EmailSubject: "Invitation"
+        UnusedAccountValidityDays: 7
+      AutoVerifiedAttributes:
+        - "email"
+      EmailVerificationMessage: "Your confirmation code: {####}"
+      EmailVerificationSubject: "Confirm email"
+      MfaConfiguration: "OFF"
+      Schema:
+        - AttributeDataType: "String"
+          Name: "email"
+          Required: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 6
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+      UserPoolName: !Sub LoginUserPool-${Environment}
+
+  LoginUserPoolClient:
+    Type: "AWS::Cognito::UserPoolClient"
+    Properties:
+      ClientName: !Sub LoginUserPoolClient-${Environment}
+      ExplicitAuthFlows:
+        - "ADMIN_NO_SRP_AUTH"
+      GenerateSecret: false
+      UserPoolId: !Ref LoginUserPool
+
+  CognitoLoginAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Sub ${Environment}
+      DefinitionBody:
+        swagger: 2.0
+        info:
+          title:
+            Ref: AWS::StackName
+        paths:
+          /login:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LoginLambda.Arn}/invocations
+              parameters:
+                - in: body
+                  name: username
+                  schema:
+                    type: String
+                  required: true
+                - in: body
+                  name: password
+                  schema:
+                    type: String
+                  required: true
+              responses: {}
+          /signup:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SignupLambda.Arn}/invocations
+              parameters:
+                - in: body
+                  name: username
+                  schema:
+                    type: String
+                  required: true
+                - in: body
+                  name: password
+                  schema:
+                    type: String
+                  required: true
+                - in: body
+                  name: email
+                  schema:
+                    type: String
+                  required: true
+              responses: {}
+          /confirm:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConfirmLambda.Arn}/invocations
+              parameters:
+                - in: body
+                  name: username
+                  schema:
+                    type: String
+                  required: true
+                - in: body
+                  name: confirmationCode
+                  schema:
+                    type: String
+                  required: true
+              responses: {}
+          /data:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DataLambda.Arn}/invocations
+            options:
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: |
+                    {
+                      "statusCode" : 200
+                    }
+                responses:
+                  "default":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Request-Headers : "'CognitoIdToken'"
+                      method.response.header.Access-Control-Allow-Headers : "'Content-Type,CognitoIdToken'"
+                      method.response.header.Access-Control-Allow-Methods : "'GET'"
+                      method.response.header.Access-Control-Allow-Origin : "'*'"
+                    responseTemplates:
+                      application/json: {}
+              responses:
+                "200":
+                  headers:
+                    Access-Control-Allow-Headers:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Request-Headers:
+                      type: "string"
+
+  LoginLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub LoginLambda-${Environment}
+      Handler: login.handler
+      Runtime: nodejs8.10
+      CodeUri: src
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt LambdaRole.Arn
+      Events:
+        MyEndpoint:
+          Type: Api
+          Properties:
+            Path: /login
+            Method: post
+            RestApiId:
+              Ref: CognitoLoginAPI
+      Environment:
+        Variables:
+          UserPoolId: !Ref LoginUserPool
+          ClientId: !Ref LoginUserPoolClient
+          Region: !Sub ${AWS::Region}
+
+  SignupLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub SignupLambda-${Environment}
+      Handler: signup.handler
+      Runtime: nodejs8.10
+      CodeUri: src
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt LambdaRole.Arn
+      Events:
+        MyEndpoint:
+          Type: Api
+          Properties:
+            Path: /signup
+            Method: post
+            RestApiId:
+              Ref: CognitoLoginAPI
+      Environment:
+        Variables:
+          UserPoolId: !Ref LoginUserPool
+          ClientId: !Ref LoginUserPoolClient
+          Region: !Sub ${AWS::Region}
+
+  ConfirmLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ConfirmLambda-${Environment}
+      Handler: confirm.handler
+      Runtime: nodejs8.10
+      CodeUri: src
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt LambdaRole.Arn
+      Events:
+        MyEndpoint:
+          Type: Api
+          Properties:
+            Path: /confirm
+            Method: post
+            RestApiId:
+              Ref: CognitoLoginAPI
+      Environment:
+        Variables:
+          UserPoolId: !Ref LoginUserPool
+          ClientId: !Ref LoginUserPoolClient
+          Region: !Sub ${AWS::Region}
+
+  DataLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub DataLambda-${Environment}
+      Handler: data.handler
+      Runtime: nodejs8.10
+      CodeUri: src
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt LambdaRole.Arn
+      Events:
+        MyEndpoint:
+          Type: Api
+          Properties:
+            Path: /data
+            Method: get
+            RestApiId:
+              Ref: CognitoLoginAPI
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+
+  LambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CognitoLoginLambdaPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "cognito-idp:AdminInitiateAuth"
+            Resource: "*"
+          - Effect: "Allow"
+            Action:
+              - "lambda:*"
+            Resource: "*"
+          - Effect: "Allow"
+            Action:
+              - "iam:PassRole"
+            Resource: "*"
+      Roles:
+        - !Ref LambdaRole
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${S3Bucket}/*
+      Bucket: !Ref S3Bucket
+
+Outputs:
+  BucketName:
+    Value: !Ref S3Bucket
+    Description: Name for S3 bucket
+
+  WebsiteURL:
+    Value: !GetAtt S3Bucket.WebsiteURL
+    Description: URL for website hosted on S3
+
+  ApiGWURL:
+    Value: !Sub https://${CognitoLoginAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Description: Login API Gateway endpoint
+
+  LoginUserPool:
+    Value: !Ref LoginUserPool
+    Description: LoginUserPool
+
+  LoginUserPoolProvider:
+    Value: !GetAtt LoginUserPool.ProviderName
+    Description: LoginUserPoolProvider
+
+  LoginUserPoolProviderURL:
+    Value: !GetAtt LoginUserPool.ProviderURL
+    Description: LoginUserPoolProviderURL
+
+  LoginUserPoolArn:
+    Value: !GetAtt LoginUserPool.Arn
+    Description: LoginUserPoolArn
+
+  LoginUserPoolClient:
+    Value: !Ref LoginUserPoolClient
+    Description: LoginUserPoolClient
