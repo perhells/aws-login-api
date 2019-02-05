@@ -2,6 +2,13 @@ AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: AWS Cognito Login API
 
+Globals:
+  Api:
+    Cors:
+      AllowMethods: "'*'"
+      AllowHeaders: "'*'"
+      AllowOrigin: "'*'"
+
 Parameters:
   Environment:
     Type: String
@@ -43,9 +50,34 @@ Resources:
       GenerateSecret: false
       UserPoolId: !Ref LoginUserPool
 
+  AuthorizedAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub Cognito-AuthorizedAPI-${Environment}
+      StageName: !Sub ${Environment}
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt LoginUserPool.Arn
+      DefinitionBody:
+        swagger: 2.0
+        info:
+          title:
+            Ref: AWS::StackName
+        paths:
+          /data:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DataLambda.Arn}/invocations
+
   CognitoLoginAPI:
     Type: AWS::Serverless::Api
     Properties:
+      Name: !Sub Cognito-LoginAPI-${Environment}
       StageName: !Sub ${Environment}
       DefinitionBody:
         swagger: 2.0
@@ -115,42 +147,6 @@ Resources:
                     type: String
                   required: true
               responses: {}
-          /data:
-            get:
-              x-amazon-apigateway-integration:
-                httpMethod: POST
-                type: aws_proxy
-                uri:
-                  !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DataLambda.Arn}/invocations
-            options:
-              x-amazon-apigateway-integration:
-                type: mock
-                requestTemplates:
-                  application/json: |
-                    {
-                      "statusCode" : 200
-                    }
-                responses:
-                  "default":
-                    statusCode: "200"
-                    responseParameters:
-                      method.response.header.Access-Control-Request-Headers : "'CognitoIdToken'"
-                      method.response.header.Access-Control-Allow-Headers : "'Content-Type,CognitoIdToken'"
-                      method.response.header.Access-Control-Allow-Methods : "'GET'"
-                      method.response.header.Access-Control-Allow-Origin : "'*'"
-                    responseTemplates:
-                      application/json: {}
-              responses:
-                "200":
-                  headers:
-                    Access-Control-Allow-Headers:
-                      type: "string"
-                    Access-Control-Allow-Methods:
-                      type: "string"
-                    Access-Control-Allow-Origin:
-                      type: "string"
-                    Access-Control-Request-Headers:
-                      type: "string"
 
   LoginLambda:
     Type: AWS::Serverless::Function
@@ -241,7 +237,7 @@ Resources:
             Path: /data
             Method: get
             RestApiId:
-              Ref: CognitoLoginAPI
+              Ref: AuthorizedAPI
 
   LambdaRole:
     Type: AWS::IAM::Role
@@ -277,9 +273,13 @@ Resources:
         - !Ref LambdaRole
 
 Outputs:
-  ApiGWURL:
+  LoginApiGWURL:
     Value: !Sub https://${CognitoLoginAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
     Description: Login API Gateway endpoint
+
+  AuthorizedApiGWURL:
+    Value: !Sub https://${AuthorizedAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Description: Authorized API Gateway endpoint
 
   LoginUserPool:
     Value: !Ref LoginUserPool

@@ -8,7 +8,7 @@ set -o nounset
 set -o pipefail
 
 STAGE=${1:-dev}
-PROJECT=aws-cognito-login-api-$STAGE
+PROJECT=cognito-login-api-$STAGE
 
 # Change the suffix on the bucket to something unique!
 BUCKET=$PROJECT-perhells
@@ -35,9 +35,7 @@ aws cloudformation deploy                       \
     --template-file build/output.yaml           \
     --stack-name $PROJECT                       \
     --capabilities CAPABILITY_NAMED_IAM         \
-    --parameter-overrides "Environment=$STAGE"  \
-    "UserPoolId=eu-central-1_uGJPyIs4I"         \
-    "ClientId=4ncqlo3tku32523749bdudmjk2"
+    --parameter-overrides "Environment=$STAGE"
 
 aws cloudformation describe-stacks \
     --stack-name $PROJECT --query 'Stacks[].Outputs'
