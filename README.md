@@ -1,6 +1,22 @@
 # Simple AWS Cognito API
 This is an example of a simple API which uses AWS Cognito Userpools for authorization.
 
+## Setup
+Deploying the API is very simple, but some post-deployment actions are required to enable CORS.
+
+### Deploying
+* Update the `PROJECT` and `BUCKET` variables in the file `deploy.sh`
+* Execute `deploy.sh`
+
+### Fixing CORS
+* In the AWS Console, go to the API Gateway Service
+* Select the Authorized API
+* In the Resources tab, select OPTIONS under /data
+* Click Method Request
+* Set Authorization to NONE and save the changes
+* Click "Deploy API" in the Actions drop-down
+* Select dev as Deployment stage and click deploy
+
 ## Stack outputs
 To list the stack outputs, run the following aws cli command:
 ```
