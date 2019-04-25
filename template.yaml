@@ -2,13 +2,6 @@ AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: AWS Cognito Login API
 
-Globals:
-  Api:
-    Cors:
-      AllowMethods: "'*'"
-      AllowHeaders: "'*'"
-      AllowOrigin: "'*'"
-
 Parameters:
   Environment:
     Type: String
@@ -73,6 +66,35 @@ Resources:
                 type: aws_proxy
                 uri:
                   !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DataLambda.Arn}/invocations
+            options:
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: |
+                    {
+                      "statusCode": 200
+                    }
+                responses:
+                  "default":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Request-Headers: "'Authorization'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+                      method.response.header.Access-Control-Allow-Methods: "'GET'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: {}
+              responses:
+                "200":
+                  headers:
+                    Access-Control-Request-Headers:
+                      type: "string"
+                    Access-Control-Allow-Headers:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Origin:
+                      type: "string"
 
   CognitoLoginAPI:
     Type: AWS::Serverless::Api

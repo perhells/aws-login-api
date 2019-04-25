@@ -11,7 +11,7 @@ STAGE=${1:-dev}
 PROJECT=cognito-login-api-$STAGE
 
 # Change the suffix on the bucket to something unique!
-BUCKET=$PROJECT-perhells
+BUCKET=$PROJECT-pehe
 
 # make a build directory to store artifacts
 rm -rf build
